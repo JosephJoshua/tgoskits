@@ -1,0 +1,109 @@
+
+OpenSBI v1.7
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 317 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 61 KB
+Firmware Heap Offset        : 0x46000
+Firmware Heap Size          : 37 KB (total), 2 KB (reserved), 11 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1400 B (used), 2696 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region01            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region02            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region03            : 0x0000000080040000-0x000000008004ffff M: (R,W) S/U: ()
+Domain0 Region04            : 0x0000000080000000-0x000000008003ffff M: (R,X) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x00000000bfe00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+
+       d8888                            .d88888b.   .d8888b.
+      d88888                           d88P" "Y88b d88P  Y88b
+     d88P888                           888     888 Y88b.
+    d88P 888 888d888  .d8888b  .d88b.  888     888  "Y888b.
+   d88P  888 888P"   d88P"    d8P  Y8b 888     888     "Y88b.
+  d88P   888 888     888      88888888 888     888       "888
+ d8888888888 888     Y88b.    Y8b.     Y88b. .d88P Y88b  d88P
+d88P     888 888      "Y8888P  "Y8888   "Y88888P"   "Y8888P"
+
+arch = riscv64
+platform = riscv64-qemu-virt
+target = riscv64gc-unknown-none-elf
+build_mode = 
+log_level = warn
+backtrace = false
+smp = 1
+
+Boot at 2026-04-12 05:49:49.004904 UTC
+
+[37m[  0.242764 0 ax_net_ng:110] [33m  No network device found![m
+[m[37m[  0.243803 0 ax_net_ng:139] [33m  No vsock device found![m
+[m[37m[  0.244182 0 ax_display:26] [33m  No display device found![m
+[mWelcome to [96m[1mStarry OS[0m!
+SHLVL=1
+HOME=/root
+PWD=/
+
+Use [1m[3mapk[0m to install packages.
+
+=== StarryOS Test Runner ===
+=== StarryTest: fcntl_getfl ===
+FAIL: fcntl_getfl::rdonly_on_rw_file (F_GETFL accmode = 2, expected O_RDONLY = 0) at /Users/jsph273/Desktop/Code/tsinghua/tgoskits/os/StarryOS/tests/cases/test_fcntl_getfl.c:43
+FAIL: fcntl_getfl::wronly_on_rw_file (F_GETFL accmode = 2, expected O_WRONLY = 1) at /Users/jsph273/Desktop/Code/tsinghua/tgoskits/os/StarryOS/tests/cases/test_fcntl_getfl.c:72
+PASS: fcntl_getfl::rdwr_on_rw_file
+FAIL: fcntl_getfl::append_flag_preserved (fd >= 0 was false) at /Users/jsph273/Desktop/Code/tsinghua/tgoskits/os/StarryOS/tests/cases/test_fcntl_getfl.c:105
+PASS: fcntl_getfl::setfl_nonblock_roundtrip
+FAIL: fcntl_getfl::setfl_append_via_fcntl (F_SETFL O_APPEND had no effect — data overwritten) at /Users/jsph273/Desktop/Code/tsinghua/tgoskits/os/StarryOS/tests/cases/test_fcntl_getfl.c:189
+PASS: fcntl_getfl::getfl_pipe_read_end
+PASS: fcntl_getfl::getfl_pipe_write_end
+FAIL: fcntl_getfl::accmode_not_changed_by_setfl (accmode = 2 after F_SETFL O_RDWR, expected O_RDONLY = 0) at /Users/jsph273/Desktop/Code/tsinghua/tgoskits/os/StarryOS/tests/cases/test_fcntl_getfl.c:272
+=== fcntl_getfl: 4 passed, 5 failed ===
+=== Test Runner Exit: 1 ===
+[37m[  0.983628 0:11 starry_kernel::syscall::fs::ctl:518] [33mdummy sys_sync[m
+[m[37m[  0.985968 0:11 starry_kernel::syscall:633] [33mUnimplemented syscall: reboot[m
+[mpoweroff: : Function not implemented

@@ -1,0 +1,77 @@
+{
+  "_comment": "StarryOS syscall test knowledge base. Updated by test pipeline.",
+  "syscalls": {
+    "pwritev2": {
+      "tested": true, "status": "buggy",
+      "bugs": ["sys_pwritev2 calls read_at instead of write_at (copy-paste from preadv2)"],
+      "source": "kernel/src/syscall/fs/io.rs:220",
+      "test": "tests/cases/test_pwritev2.c"
+    },
+    "mremap": {
+      "tested": true, "status": "broken",
+      "bugs": [
+        "CRITICAL: sys_mmap called with MAP_PRIVATE but no MAP_ANONYMOUS → always EINVAL",
+        "Variable shadowing: user MREMAP_* flags overwritten by MappingFlags",
+        "Always creates new PRIVATE ANONYMOUS mapping, ignoring original type",
+        "Always moves mapping even without MREMAP_MAYMOVE",
+        "Shrink does not return same address"
+      ],
+      "source": "kernel/src/syscall/mm/mmap.rs:282-318",
+      "test": "tests/cases/test_mremap.c",
+      "results": { "pass": 2, "fail": 7 }
+    },
+    "fcntl_getfl": {
+      "tested": true, "status": "buggy",
+      "bugs": [
+        "F_GETFL derives access mode from file permission bits instead of open flags",
+        "O_APPEND not tracked by F_GETFL or F_SETFL",
+        "F_SETFL only handles O_NONBLOCK",
+        "open(O_WRONLY|O_CREAT|O_TRUNC|O_APPEND) fails"
+      ],
+      "source": "kernel/src/syscall/fs/fd_ops.rs:252-273",
+      "test": "tests/cases/test_fcntl_getfl.c",
+      "results": { "pass": 4, "fail": 5 }
+    },
+    "copy_file_range": {
+      "tested": true, "status": "buggy",
+      "bugs": [
+        "DATA CORRUPTION: same-file forward-overlapping copy corrupts data",
+        "flags parameter completely ignored (should reject nonzero)",
+        "No regular-file check: accepts pipes/sockets"
+      ],
+      "source": "kernel/src/syscall/fs/io.rs:317-352",
+      "test": "tests/cases/test_copy_file_range.c",
+      "results": { "pass": 3, "fail": 4, "notes": "1 fail is test bug not kernel bug" }
+    },
+    "mmap": {
+      "tested": true, "status": "mostly_ok",
+      "bugs": ["MAP_ANONYMOUS with fd > 0 rejected (Linux ignores fd)"],
+      "source": "kernel/src/syscall/mm/mmap.rs:123",
+      "test": "tests/cases/test_mmap_edge.c",
+      "results": { "pass": 7, "fail": 1 }
+    },
+    "memfd_create": {
+      "tested": true, "status": "buggy",
+      "bugs": [
+        "Not anonymous: backed by real files at /tmp/memfd-XXXX (nlink=1, should be 0)",
+        "Data persists after close: /tmp/memfd-* files not cleaned up"
+      ],
+      "source": "kernel/src/syscall/fs/memfd.rs:13-32",
+      "test": "tests/cases/test_memfd_create.c",
+      "results": { "pass": 5, "fail": 2 },
+      "notes": "Basic functionality (read/write, cloexec, ftruncate, mmap) works correctly"
+    },
+    "flock": {
+      "tested": true, "status": "stub",
+      "bugs": [
+        "Complete stub: always returns Ok(0), no actual locking performed",
+        "Exclusive locks don't block other exclusive or shared locks",
+        "Shared locks don't block exclusive locks",
+        "Invalid operation (0) not rejected with EINVAL"
+      ],
+      "source": "kernel/src/syscall/fs/fd_ops.rs:308-312",
+      "test": "tests/cases/test_flock.c",
+      "results": { "pass": 4, "fail": 4 }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "test": "test_mremap",
+  "timestamp": "2026-04-12T05:38:20Z",
+  "pass": 0
+0,
+  "fail": 1,
+  "details": [
+    "FAIL: mremap::basic_grow_maymove (got -1, did not expect -1, errno=22 Invalid argument) at /Users/jsph273/Desktop/Code/tsinghua/tgoskits/os/StarryOS/tests/cases/test_mremap.c:36"
+  ]
+}

@@ -1,0 +1,5 @@
+FROM alpine:3.20
+RUN apk add --no-cache wget tar
+RUN wget -qO- https://musl.cc/riscv64-linux-musl-cross.tgz | tar xz -C /opt
+ENV PATH="/opt/riscv64-linux-musl-cross/bin:$PATH"
+WORKDIR /src

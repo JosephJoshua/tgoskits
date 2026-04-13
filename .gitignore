@@ -49,3 +49,5 @@ __pycache__/
 .starry*
 .axvisor*
 .board*
+
+.DS_Store
