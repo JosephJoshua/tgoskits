@@ -1,0 +1,37 @@
+## Core auxiliary files
+*.aux
+*.fls
+*.glo
+*.idx
+*.log
+*.toc
+
+## Intermediate documents and outputs
+*.dvi
+*.xdv
+*.out
+*.synctex.gz
+*.synctex(busy)
+*.pdfsync
+
+## Bibliography auxiliary files (BibTeX / BibLaTeX / Biber)
+*.bbl
+*.bcf
+*.blg
+*-blx.aux
+*-blx.bib
+*.run.xml
+
+## Build tool engines (e.g., latexmk)
+*.fdb_latexmk
+
+## Package-specific overrides (Beamer, Glossaries, etc.)
+*.nav
+*.snm
+*.vrb
+*.acn
+*.acr
+*.alg
+*.glg
+*.gls
+*.ist

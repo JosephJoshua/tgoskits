@@ -1,0 +1,1598 @@
+% ============================================================================
+%  StarryOS 内核开发与 AI 辅助开发流水线: 最终答辩
+%  Joseph Joshua (jsph273), 2026-05-30
+%  编译: xelatex -shell-escape slide-deck.tex
+% ============================================================================
+
+\documentclass[aspectratio=169,10pt]{ctexbeamer}
+
+% ── 主题 ──────────────────────────────────────────────────────────────────
+\usetheme[numbering=fraction,progressbar=foot]{metropolis}
+\setbeamertemplate{section in toc}[sections numbered]
+\metroset{block=fill}
+% Compact section frames to avoid vbox overflow
+\AtBeginSection{%
+  \frame[plain,c,noframenumbering]{\vspace{1.8cm}\large\insertsectionhead}
+}
+\setbeamertemplate{section page}{}
+
+% ── 包 ────────────────────────────────────────────────────────────────────
+\usepackage{tikz}
+\usetikzlibrary{
+  arrows.meta, positioning, shapes, shapes.geometric, calc, fit,
+  backgrounds, decorations.pathreplacing, chains, matrix, shadows,
+  patterns, mindmap
+}
+\usepackage{minted}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+% fontawesome5 causes preamble font measurement hboxes — not used, removed
+
+% ── 字体 ──────────────────────────────────────────────────────────────────
+% Latin Modern Sans (Metropolis default, no font measurement warnings)
+\setmonofont{Source Code Pro}
+\setCJKsansfont{PingFang SC}
+\setCJKmonofont{PingFang SC}
+
+% ── 颜色 ──────────────────────────────────────────────────────────────────
+\definecolor{metroteal}{HTML}{23373b}
+\definecolor{accent}{HTML}{4db6ac}
+\definecolor{warn}{HTML}{e57373}
+\definecolor{dim}{HTML}{78909c}
+\definecolor{bglight}{HTML}{f5f5f5}
+\definecolor{codebg}{HTML}{fafafa}
+\definecolor{good}{HTML}{66bb6a}
+
+% minted 样式
+\setminted{
+  fontsize=\scriptsize,
+  bgcolor=codebg,
+  frame=single,
+  framesep=4pt,
+  autogobble,
+  breaklines,
+}
+
+% ── TikZ 样式 ─────────────────────────────────────────────────────────────
+% (defined here for package loading; redefined after \begin{document} to avoid
+%  preamble font measurement hboxes)
+
+% ── 辅助命令 ──────────────────────────────────────────────────────────────
+\newcommand{\syscall}[1]{\mintinline{text}{#1}}
+\newcommand{\code}[1]{\mintinline{rust}{#1}}
+\newcommand{\highlight}[1]{\textcolor{accent}{#1}}
+\newcommand{\warn}[1]{\textcolor{warn}{#1}}
+\newcommand{\dimtext}[1]{\textcolor{dim}{#1}}
+
+% 元数据
+\title{StarryOS 内核开发与 AI 辅助开发流水线}
+\subtitle{BigLab B 最终答辩}
+\author{Joseph Joshua (jsph273)}
+\date{2026-05-30}
+\institute{\texttt{rcore-os/tgoskits}}
+
+\begin{document}
+
+\hbadness=10000
+\vbadness=10000
+\hfuzz=65pt
+\vfuzz=15pt
+
+% TikZ styles defined here to avoid preamble font measurement hboxes
+\tikzset{
+  box/.style={draw=metroteal, fill=metroteal!5, rounded corners=2pt,
+    thick, inner sep=6pt, align=center, font=\footnotesize},
+  boxhl/.style={draw=accent, fill=accent!10, rounded corners=2pt,
+    thick, inner sep=6pt, align=center, font=\footnotesize},
+  boxwarn/.style={draw=warn, fill=warn!10, rounded corners=2pt,
+    thick, inner sep=6pt, align=center, font=\footnotesize},
+  arr/.style={-Stealth, thick, metroteal},
+  arrwarn/.style={-Stealth, thick, warn},
+  arrdim/.style={-Stealth, thick, dim},
+  annot/.style={font=\scriptsize\color{dim}},
+  tag/.style={font=\scriptsize, fill=metroteal!8, rounded corners=1pt, inner sep=2pt},
+}
+
+\maketitle
+
+% ════════════════════════════════════════════════════════════════════════════
+% §1  封面 + 工作概览
+% ════════════════════════════════════════════════════════════════════════════
+
+\section{工作概览}
+
+\begin{frame}[shrink=10]{工作总览}
+\centering
+\begin{tikzpicture}[node distance=8mm and 12mm]
+  \node[boxhl, font=\normalsize] (pipeline) {starry-harness\\9 技能 + 3 代理 + 16 脚本};
+  \node[box, right=of pipeline, font=\normalsize] (prs) {32 个 PR\\6 周};
+  \node[boxhl, right=of prs, font=\normalsize] (pg) {PostgreSQL\\postmaster 启动};
+  \node[boxhl, right=of pg, font=\normalsize] (weston) {Weston\\14 帧渲染};
+  \draw[arr] (pipeline) -- (prs);
+  \draw[arr] (prs) -- (pg);
+  \draw[arr] (prs) -- (weston);
+  \node[box, fit=(pg)(weston), yshift=6mm, inner sep=6pt] (apps) {};
+  \node[annot, above=2mm of apps] {两个大型应用};
+\end{tikzpicture}
+
+\vspace{1mm}
+\begin{columns}[T]
+\column{0.32\textwidth}
+\centering
+\textbf{11} 个独立 syscall 修复
+
+\column{0.32\textwidth}
+\centering
+\textbf{13} 个 PG 路径发现
+
+\column{0.32\textwidth}
+\centering
+\textbf{8} 个 Wayland 专属
+\end{columns}
+
+\vspace{1mm}
+{\dimtext{时间线: 2026-04-15 → 05-21，六周}}
+
+\vspace{1mm}
+核心命题: 使 StarryOS 的 Linux syscall 语义从"基本可用"达到"精确对齐"。
+\end{frame}
+
+% ════════════════════════════════════════════════════════════════════════════
+% §2  实验1: AI 开发流水线
+% ════════════════════════════════════════════════════════════════════════════
+
+\section{实验1: AI 开发流水线}
+
+\begin{frame}{动机: 三个痛点}
+\begin{columns}[T]
+\column{0.30\textwidth}
+\textbf{反馈循环过慢}
+
+\vspace{1mm}
+build → rootfs → QEMU → test
+
+3--5 分钟/迭代
+
+\column{0.30\textwidth}
+\textbf{Linux 对照成本高}
+
+\vspace{1mm}
+手动编译、手动运行
+
+手动读 man page
+
+逐字段人工对比
+
+\column{0.30\textwidth}
+\textbf{重复工作线性增长}
+
+\vspace{1mm}
+每个 bug 的修复流程高度相似
+
+状态追踪与报告维护负担
+
+随修复数量线性增加
+\end{columns}
+
+\vspace{1.5mm}
+\centering
+\highlight{starry-harness} 将这三类重复工作自动化。
+开发者保留架构决策与语义判断的控制权。
+\end{frame}
+
+% ── Slide 4: 流水线架构 ──────────────────────────────────────────────────
+
+\begin{frame}[fragile,shrink=30]{流水线架构}
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  node distance=4mm and 8mm,
+  grp/.style={draw=metroteal!30, fill=metroteal!3, rounded corners=4pt, thick, inner sep=6pt},
+  lbl/.style={font=\bfseries\small\color{metroteal}},
+]
+  % 左侧: User
+  \node[boxhl, font=\small\bfseries] (user) {User};
+  \node[lbl, left=0mm of user] {};
+
+  % Skills 组
+  \node[grp, right=of user, text width=6.5cm] (skills-grp) {
+    \textbf{Skills (9)}
+    \begin{tikzpicture}[baseline]
+      \node[box,inner sep=3pt,font=\scriptsize] (s1) {hunt-bugs};
+      \node[box,inner sep=3pt,font=\scriptsize,right=of s1] (s2) {test-app};
+      \node[box,inner sep=3pt,font=\scriptsize,right=of s2] (s3) {benchmark};
+      \node[box,inner sep=3pt,font=\scriptsize,below=2mm of s1] (s4) {audit-kernel};
+      \node[box,inner sep=3pt,font=\scriptsize,right=of s4] (s5) {review-quality};
+      \node[box,inner sep=3pt,font=\scriptsize,right=of s5] (s6) {check-upstream};
+      \node[box,inner sep=3pt,font=\scriptsize,below=2mm of s4] (s7) {start-submission};
+      \node[box,inner sep=3pt,font=\scriptsize,right=of s7] (s8) {evolve};
+      \node[box,inner sep=3pt,font=\scriptsize,right=of s8] (s9) {report};
+    \end{tikzpicture}
+  };
+
+  % Agents 组
+  \node[grp, below=of skills-grp, text width=6.5cm] (agents-grp) {
+    \textbf{Agents (3)}
+    \begin{tikzpicture}[baseline]
+      \node[boxhl,inner sep=3pt,font=\scriptsize] (a1) {linux-comparator};
+      \node[boxhl,inner sep=3pt,font=\scriptsize,right=of a1] (a2) {kernel-reviewer};
+      \node[boxhl,inner sep=3pt,font=\scriptsize,right=of a2] (a3) {bug-triager};
+    \end{tikzpicture}
+  };
+
+  % Scripts 组
+  \node[grp, below=of agents-grp, text width=6.5cm] (scripts-grp) {
+    \textbf{Scripts (16)}
+    \begin{tikzpicture}[baseline]
+      \node[box,inner sep=2pt,font=\tiny] (c1) {abi-check.py};
+      \node[box,inner sep=2pt,font=\tiny,right=of c1] (c2) {lock-order-graph.py};
+      \node[box,inner sep=2pt,font=\tiny,right=of c2] (c3) {pattern-scanner.py};
+      \node[box,inner sep=2pt,font=\tiny,right=of c3] (c4) {kernel-graph.py};
+      \node[box,inner sep=2pt,font=\tiny,below=1mm of c1] (c5) {rust\_analyzer.py};
+      \node[box,inner sep=2pt,font=\tiny,right=of c5] (c6) {linux-ref-test.sh};
+      \node[box,inner sep=2pt,font=\tiny,right=of c6] (c7) {strace-profiler.sh};
+      \node[box,inner sep=2pt,font=\tiny,right=of c7] (c8) {man-lookup.sh};
+      \node[box,inner sep=2pt,font=\tiny,below=1mm of c5] (c9) {regression-check.sh};
+      \node[box,inner sep=2pt,font=\tiny,right=of c9] (c10) {stress-test.sh};
+      \node[box,inner sep=2pt,font=\tiny,right=of c10] (c11) {change-tracker.py};
+      \node[box,inner sep=2pt,font=\tiny,right=of c11] (c12) {convert-test.py};
+      \node[box,inner sep=2pt,font=\tiny,below=1mm of c9] (c13) {pipeline.sh};
+      \node[box,inner sep=2pt,font=\tiny,right=of c13] (c14) {draft-pr.sh};
+      \node[box,inner sep=2pt,font=\tiny,right=of c14] (c15) {journal-entry.sh};
+      \node[box,inner sep=2pt,font=\tiny,right=of c15] (c16) {update-known.sh};
+    \end{tikzpicture}
+  };
+
+  % Labels
+  \node[lbl,left=3.0cm of skills-grp, rotate=90, anchor=mid] {};
+  \node[lbl,left=4.8cm of agents-grp, rotate=90, anchor=mid] {};
+  \node[lbl,left=4.8cm of scripts-grp, rotate=90, anchor=mid] {};
+
+  % Arrows
+  \draw[arr] (user) -- (skills-grp);
+  \draw[arr] (skills-grp) -- (agents-grp);
+  \draw[arr] (agents-grp) -- (scripts-grp);
+\end{tikzpicture}%
+}
+
+\vspace{1mm}
+{\dimtext{脚本是确定性的（同一输入永远同一输出）；代理处理需要判断的工作。}}
+\end{frame}
+
+% ── Slide 5: hunt-bugs 五阶段 ─────────────────────────────────────────────
+
+\begin{frame}[fragile]{核心工作流: hunt-bugs 五阶段}
+\centering
+\resizebox{\textwidth}{0.78\textheight}{%
+\begin{tikzpicture}[
+  node distance=3mm and 6mm,
+  phase/.style={draw=metroteal, fill=metroteal!5, rounded corners=3pt,
+                thick, text width=4.0cm, align=left, minimum height=2.0cm,
+                font=\scriptsize, inner sep=3pt},
+]
+  \node[phase] (p1) {
+    {\bfseries\scriptsize\color{metroteal} Phase 1: 发现}\\[1mm]
+    {\tiny\color{dim} known.json 选目标\\ man-lookup.sh 查文档}
+  };
+  \node[phase, right=of p1] (p2) {
+    {\bfseries\scriptsize\color{metroteal} Phase 2: 测试}\\[1mm]
+    {\tiny\color{dim} 编写 C 测试程序\\ 交叉编译 ×3 架构\\ linux-ref-test.sh 参照}
+  };
+  \node[phase, right=of p2] (p3) {
+    {\bfseries\scriptsize\color{metroteal} Phase 3: 对比}\\[1mm]
+    {\tiny\color{dim} linux-comparator agent\\ StarryOS vs Linux\\ 逐字段输出差异}
+  };
+  \node[phase, below=of p2, yshift=-3mm] (p4) {
+    {\bfseries\scriptsize\color{metroteal} Phase 4: 修复}\\[1mm]
+    {\tiny\color{dim} 阅读源码 → kernel-graph.py\\ lock-order-graph.py 检查死锁\\ 验证: FAIL → PASS}
+  };
+  \node[phase, right=of p4] (p5) {
+    {\bfseries\scriptsize\color{metroteal} Phase 5: 报告}\\[1mm]
+    {\tiny\color{dim} report: 生成报告\\ update-known.sh: 更新状态\\ draft-pr.sh: 准备 PR 描述}
+  };
+
+  \draw[arr] (p1) -- (p2);
+  \draw[arr] (p2) -- (p3);
+  \draw[arr] (p3.south) -- ++(0,-3mm) -| (p4.north);
+  \draw[arr] (p4) -- (p5);
+  \draw[arrdim] (p5.north) -- ++(0,3mm) -| (p1.south)
+    node[pos=0.85, above, font=\tiny] {循环};
+\end{tikzpicture}%
+}
+\end{frame}
+
+% ── Slide 6: 三道工程护栏 ────────────────────────────────────────────────
+
+\begin{frame}{三道工程护栏}
+\begin{tabularx}{\textwidth}{p{2.2cm} p{4.5cm} X}
+\toprule
+\textbf{护栏} & \textbf{机制} & \textbf{效果} \\
+\midrule
+\highlight{结构化输出} &
+  所有 Agent 输出经 JSON Schema 验证 &
+  下游可无歧义消费，状态变化可追踪 \\
+\midrule
+\highlight{状态记忆} &
+  \texttt{known.json} 为所有缺陷的单一事实来源 &
+  防止重复修复、重复提交 \\
+\midrule
+\highlight{审查否决权} &
+  kernel-reviewer 独立运行，只找问题不批准 &
+  不合格的修复退回重改，直至全部维度通过 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1mm}
+审查维度: 行为精确匹配 Linux？ TOCTOU / UAF / 未初始化内存？ 锁顺序一致？
+死锁可能？ 错误路径回滚？ 回归测试覆盖所有触发条件？
+\end{frame}
+
+% ════════════════════════════════════════════════════════════════════════════
+% §3  实验2: 系统调用修复
+% ════════════════════════════════════════════════════════════════════════════
+
+\section{实验2: 系统调用修复}
+
+\begin{frame}[shrink=5]{概述与 PR 总表}
+\resizebox{\textwidth}{!}{%
+\begin{tabularx}{\textwidth}{c c l X}
+\toprule
+\textbf{PR} & \textbf{日期} & \textbf{标题} & \textbf{子系统} \\
+\midrule
+\#197 & 04-15 & fix preadv/pwritev/preadv2/pwritev2 ABI & FS \\
+\#205 & 05-07 & feat: implement mremap & Memory \\
+\#207 & 04-25 & fix sigaltstack MINSIGSTKSZ & Signal \\
+\#208 & 04-19 & fix getgroups, clock\_gettime & Task/Timer \\
+\#209 & 04-30 & fix ftruncate/pwrite64 negative values & FS \\
+\#210 & 04-23 & fix getrandom flags validation & Misc \\
+\#211 & 04-24 & fix copy\_file\_range validation & FS \\
+\#250 & 04-18 & fix epoll\_pwait sigsetsize & Signal/epoll \\
+\#318 & 04-23 & fix loongarch64 QEMU memory & Arch \\
+\#503 & 05-16 & feat: timerfd & Timer \\
+\#505 & 05-16 & feat: crash dump on fatal signals & Signal \\
+\bottomrule
+\end{tabularx}%
+}
+
+\vspace{1mm}
+深挖三个代表性 PR: \highlight{timerfd}（fd 抽象层）、
+\highlight{preadv/pwritev}（syscall ABI 层）、
+\highlight{mremap}（内存管理层）。
+\end{frame}
+
+% ── Slide 8: timerfd 动机与设计 ───────────────────────────────────────────
+
+\begin{frame}[fragile,shrink=15]{Deep Dive: timerfd (\#503): 动机与设计}
+timerfd 将 POSIX 定时器暴露为可被 epoll/select/poll 监听的文件描述符。
+\syscall{read()} 返回到期次数。systemd、dbus、Wayland event loop 均依赖此机制。
+
+\vspace{1mm}
+从零实现一个完整 \code{FileLike} 类型:
+
+\begin{columns}[T]
+\column{0.48\textwidth}
+\small
+\textbf{创建}
+\begin{minted}{rust}
+timerfd_create(clockid, flags) → fd
+  → TimerFd { clock, interval,
+              expiration, is_oneshot }
+  → 注册到 FD_TABLE (FileLike trait)
+\end{minted}
+
+\column{0.48\textwidth}
+\small
+\textbf{设置}
+\begin{minted}{rust}
+timerfd_settime(fd, flags,
+                new_value, old_value)
+  → itimerspec: {it_interval, it_value}
+  → TFD_TIMER_ABSTIME (绝对/相对)
+  → 更新底层 axtask 定时器
+\end{minted}
+\end{columns}
+
+\vspace{1mm}
+\begin{center}
+\syscall{read(fd) → u64 (到期次数)}：非阻塞空队列返回 EAGAIN；读取后清零内部计数器。
+\end{center}
+\end{frame}
+
+% ── Slide 9: timerfd 实现要点 ─────────────────────────────────────────────
+
+\begin{frame}[fragile,shrink=5]{timerfd (\#503): 实现要点}
+\code{FileLike} trait 的完整实现:
+
+\begin{columns}[T]
+\column{0.48\textwidth}
+\small
+\begin{minted}{rust}
+fn read(&self) -> Result<u64> {
+  // 阻塞或非阻塞等待
+  // 返回到期次数
+  // 非阻塞空队列 → EAGAIN
+}
+fn write(&self) -> Err(EINVAL) {
+  // 不支持写操作
+}
+\end{minted}
+
+\column{0.48\textwidth}
+\small
+\begin{minted}{rust}
+fn close(&self) {
+  // 取消底层定时器，释放资源
+}
+fn poll(&self) -> EPOLLIN {
+  // 到期时 waker 被唤醒
+  // epoll 报告 EPOLLIN
+}
+\end{minted}
+\end{columns}
+
+\vspace{1mm}
+关键细节:
+\begin{itemize}
+  \item \texttt{it\_interval = \{0, 0\}}: 一次性定时器，到期后不复用
+  \item \texttt{it\_interval > 0}: 周期性定时器，到期后自动重新武装
+  \item 时钟源: \texttt{CLOCK\_REALTIME}（墙上时间）、\texttt{CLOCK\_MONOTONIC}（单调时间）
+  \item epoll 集成: \code{FileLike::poll()} 返回 \texttt{EPOLLIN}，定时器到期唤醒 epoll\_wait
+\end{itemize}
+\end{frame}
+
+% ── Slide 10: preadv/pwritev ──────────────────────────────────────────────
+
+\begin{frame}[fragile,shrink=5]{Deep Dive: preadv/pwritev ABI (\#197)}
+64 位文件偏移在 32 位寄存器 ABI 中被拆分为两个参数:
+
+\begin{center}
+\begin{tikzpicture}
+  \node[box, font=\footnotesize\ttfamily] (syscall) {
+    sys\_preadv(fd, iov, iovcnt, pos\_l, pos\_h)
+  };
+  \node[boxhl, below=6mm of syscall, font=\footnotesize] (split) {
+    64-bit pos 拆分 $\rightarrow$ pos\_l (low 32) + pos\_h (high 32)
+  };
+  \draw[arr] (syscall) -- (split);
+\end{tikzpicture}
+\end{center}
+
+Linux 内核定义:
+\begin{itemize}
+  \item \syscall{preadv}/\syscall{pwritev} → \texttt{SYSCALL\_DEFINE5} (fd, vec, vlen, pos\_l, pos\_h)
+  \item \syscall{preadv2}/\syscall{pwritev2} → \texttt{SYSCALL\_DEFINE6} (fd, vec, vlen, pos\_l, pos\_h, flags)
+\end{itemize}
+
+\vspace{1mm}
+StarryOS 此前遗漏 \texttt{pos\_h} 参数。更隐蔽的问题:
+\syscall{sys\_pwritev2} 从 \syscall{sys\_preadv2} 复制而来，内部调用仍为 \code{.read\_at()}
+而非 \code{.write\_at()}。此为 \highlight{copy-paste 产生实现错误的典型案例}。
+
+\vspace{1mm}
+修复: 重组 64 位偏移；修正 pwritev2 内部调用方向。此 PR 后新增 \texttt{abi-check.py}
+脚本，自动比对每个 syscall 的参数数量与 Linux \texttt{SYSCALL\_DEFINEn} 宏的元数。
+\end{frame}
+
+% ── Slide 11: mremap 动机 ─────────────────────────────────────────────────
+
+\begin{frame}[shrink=10]{Deep Dive: mremap (\#205): 动机}
+\syscall{mremap} 在虚拟地址空间中重新映射已有的内存区域。
+glibc 的 \syscall{realloc} 对大块内存使用 \syscall{mremap} 而非 \syscall{malloc} + \syscall{memcpy} + \syscall{free}。
+
+\vspace{1mm}
+\begin{tabularx}{\textwidth}{p{2cm} p{3.5cm} X}
+\toprule
+\textbf{模式} & \textbf{标志} & \textbf{行为} \\
+\midrule
+原地扩展
+  & 无 \texttt{MREMAP\_MAYMOVE}
+  & 尝试扩大 VMA，地址不变；失败返回 \texttt{ENOMEM} \\
+\midrule
+可移动扩展
+  & \texttt{MREMAP\_MAYMOVE}
+  & 当前地址不够时寻找新地址，更新页表映射 \\
+\midrule
+固定地址
+  & \texttt{MREMAP\_FIXED}
+  & 指定目标地址，替换已有映射 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1mm}
+此 PR 是理解"内核如何管理进程地址空间"的入口: 涉及 VMA 操作、页表更新、地址对齐约束。
+\end{frame}
+
+% ── Slide 12: mremap 实现 ─────────────────────────────────────────────────
+
+\begin{frame}[fragile]{mremap (\#205): 实现要点}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\small
+\begin{minted}{rust}
+mremap(old_addr, old_size,
+       new_size, flags, new_addr)
+  1. 验证 old_addr 页对齐, old_size > 0
+  2. 在 AddrSpace 中查找对应 VMA
+  3. 检查 VMA 精确匹配 old_size
+  4. 三种路径:
+     a. new_size <= old_size: 收缩 VMA
+     b. 原地可扩展: 直接扩大 VMA
+     c. MREMAP_MAYMOVE: 寻找空闲地址
+        范围，复制页表映射
+  5. 更新 VMA 集合与页表
+\end{minted}
+
+\column{0.40\textwidth}
+关键约束:
+\begin{itemize}
+  \item 新地址范围必须完全空闲
+  \item \texttt{MREMAP\_FIXED} 替换目标地址已有映射
+  \item 收缩操作: 先 \texttt{munmap} 尾部页面，再更新 VMA size
+  \item 所有操作在 \texttt{AddrSpace} 锁保护下原子完成
+\end{itemize}
+\end{columns}
+
+\vspace{1mm}
+与 \syscall{mmap}、\syscall{munmap}、\syscall{brk} 共同构成 StarryOS 虚拟内存管理的四个基础原语。
+\end{frame}
+
+% ── Slide 13: 共同模式 ────────────────────────────────────────────────────
+
+\begin{frame}{共同模式}
+11 个 PR 中反复出现三类缺陷模式:
+
+\vspace{1mm}
+\begin{tabularx}{\textwidth}{p{3cm} p{3.5cm} X}
+\toprule
+\textbf{模式} & \textbf{案例} & \textbf{特征} \\
+\midrule
+\alert{遗留实现与新语义混淆}
+  & \#197 preadv/pwritev
+  & 从早期简化实现演进时遗漏参数，copy-paste 未核验 \\
+\midrule
+\alert{直觉驱动的边界处理}
+  & \#207 sigaltstack、\#250 epoll sigsetsize
+  & Linux 的精确边界是 20 年 bug 修复的结果，非直觉可替代 \\
+\midrule
+\alert{参数校验的静默缺失}
+  & \#208 getgroups、\#210 getrandom、\#211 copy\_file\_range
+  & 基本路径可通，非法参数不返回 EINVAL，调用方误以为操作成功 \\
+\bottomrule
+\end{tabularx}
+\end{frame}
+
+% ── Slide 14: 过渡 ────────────────────────────────────────────────────────
+
+\begin{frame}{从独立修复到大型应用}
+这些独立修复使 StarryOS 通过大部分单次 syscall 测试。
+
+\vspace{1mm}
+\centering
+但真实应用的复杂性远超单次测试。
+
+PostgreSQL 和 Weston 在启动过程中调用数百个 syscall，
+
+任何一个环节的偏差都导致启动失败。
+
+\vspace{1mm}
+\begin{tikzpicture}
+  \node[box, font=\normalsize] (s14a) {11 个独立 syscall 修复};
+  \node[boxhl, right=3cm of s14a, font=\normalsize] (s14b) {PostgreSQL + Weston 适配};
+  \draw[arr, line width=1.2pt] (s14a) -- (s14b);
+\end{tikzpicture}
+\end{frame}
+
+% ════════════════════════════════════════════════════════════════════════════
+% §4A  实验4: PostgreSQL 适配
+% ════════════════════════════════════════════════════════════════════════════
+
+\section{实验4A: PostgreSQL 适配}
+
+\begin{frame}{为什么选择 PostgreSQL}
+\begin{columns}[T]
+\column{0.50\textwidth}
+PostgreSQL 在常见 Linux 应用中属于少数同时深度依赖所有核心 POSIX 子系统的类别:
+
+\begin{itemize}
+  \item \texttt{setresuid} 切换用户身份
+  \item AF\_UNIX socketpair 进程间通道
+  \item SysV \texttt{shmget} 分配共享内存
+  \item epoll + self-pipe 事件循环
+  \item \texttt{fsync} 作用于目录 fd
+  \item \texttt{rename} + \texttt{fsync} 原子持久化
+\end{itemize}
+
+\column{0.45\textwidth}
+\highlight{关键优势:}
+
+启动失败时每个步骤输出精确的错误码和系统调用名。
+
+PostgreSQL 的启动日志本身就是最好的测试框架，不需要 strace。
+
+\bigskip
+Web 服务器主要压力在 epoll 与 sendfile。
+
+键值存储主要压力在 epoll 与内存分配。
+
+PostgreSQL 启动过程依次经历所有核心 POSIX 子系统。
+\end{columns}
+\end{frame}
+
+% ── Slide 16: PostgreSQL 进程模型 ─────────────────────────────────────────
+
+\begin{frame}[fragile,shrink=5]{PostgreSQL 进程模型}
+PostgreSQL 采用每连接独立进程模型（非线程池）:
+
+\vspace{1mm}
+\begin{center}
+\resizebox{0.9\textwidth}{!}{%
+\begin{tikzpicture}[
+  level 1/.style={sibling distance=18mm, level distance=10mm},
+  level 2/.style={sibling distance=10mm, level distance=10mm},
+  proc/.style={box, inner sep=3pt, font=\footnotesize},
+]
+  \node[boxhl, font=\small\bfseries] (master) {postmaster\\(uid=postgres)}
+    child { node[proc] (startup) {startup\\WAL 恢复} }
+    child { node[proc] (ckpt) {checkpointer\\脏页刷写} }
+    child { node[proc] (bgw) {bgwriter\\后台写入} }
+    child { node[proc] (wal) {walwriter\\WAL 刷写} }
+    child { node[proc] (auto) {autovacuum\\launcher} }
+    child { node[proc] (arch) {archiver\\(可选)} }
+    child { node[proc] (stats) {stats\\collector} }
+    child { node[proc] (be) {backend × N\\每连接 fork} };
+
+  \draw[arrdim] (master) -- (startup) node[midway,left,font=\tiny] {fork()};
+  \draw[arrdim] (master) -- (ckpt);
+  \draw[arrdim] (master) -- (bgw);
+  \draw[arrdim] (master) -- (wal);
+  \draw[arrdim] (master) -- (auto);
+  \draw[arrdim] (master) -- (arch);
+  \draw[arrdim] (master) -- (stats);
+  \draw[arrdim] (master) -- (be);
+\end{tikzpicture}%
+}
+\end{center}
+
+\vspace{1mm}
+每个 fork 子进程的初始化序列：
+\begin{enumerate}
+  \item \texttt{setresuid/setresgid} → 切换至 postgres 用户（uid=70）
+  \item \texttt{prctl(PR\_SET\_PDEATHSIG, SIGTERM)} → 父进程终止时收到 SIGTERM
+  \item \texttt{prlimit64(RLIMIT\_NOFILE, ...)} → 提高文件描述符限制
+  \item \texttt{getrlimit(RLIMIT\_STACK)} → 计算 max\_stack\_depth
+\end{enumerate}
+
+任一步骤失效均导致 worker 退出，postmaster 判定系统不稳定并中止启动。
+\end{frame}
+
+% ── Slide 17: 进程间通信层 ────────────────────────────────────────────────
+
+\begin{frame}[fragile,shrink=30]{进程间通信层}
+PostgreSQL 使用三条独立的 IPC 通道:
+
+\vspace{1mm}
+\small
+\textbf{1. SysV 共享内存（shared\_buffers 页缓存层）}
+
+\begin{minted}{c}
+postmaster: shmget(IPC_PRIVATE, size, IPC_CREAT | 0600)
+backend:    shmat(shmid, NULL, 0)   // fork 后继承映射
+            shmdt(shmaddr)          // 进程退出时分离
+\end{minted}
+
+要求: 多进程并发 attach/detach 不可死锁；\texttt{IPC\_RMID} 在 nattch==0 时立即销毁。
+
+\vspace{1mm}
+\textbf{2. AF\_UNIX socketpair（postmaster↔worker 控制通道）}
+
+\begin{minted}{c}
+socketpair(AF_UNIX, SOCK_STREAM) → {sock0, sock1}
+worker: close(sock1)              // 写端关闭
+postmaster: recv(sock0)           // 期待返回 0 (EOF)
+\end{minted}
+
+要求: 写端关闭后读端必须返回 0 (EOF) 而非 EAGAIN。
+
+\vspace{1mm}
+\textbf{3. Self-pipe + epoll（WaitEventSet 事件循环）}
+
+\begin{minted}{c}
+pipe2(self_pipe, O_NONBLOCK) → {rfd, wfd}
+epoll_create1(EPOLL_CLOEXEC) → epfd
+epoll_ctl(epfd, EPOLL_CTL_ADD, rfd, EPOLLIN)
+epoll_ctl(epfd, EPOLL_CTL_MOD, latch_fd, EPOLLIN)  // 反复重武装
+\end{minted}
+
+要求: EPOLL\_CTL\_MOD 后事件不可丢失；LT 模式不可对同一 fd 返回 N 份副本。
+\end{frame}
+
+% ── Slide 18: 存储层与启动序列 ────────────────────────────────────────────
+
+\begin{frame}[fragile,shrink=50]{存储层与完整启动序列}
+\tiny
+PostgreSQL 的持久化写入采用 \highlight{durable\_rename} 模式:
+
+\begin{minted}{c}
+write(tmp_file)          // 写入临时文件
+fsync(tmp_file)          // 确保数据到达存储介质
+rename(tmp_file, final)  // 原子重命名
+fsync(parent_dir_fd)     // 确保目录项持久化 (POSIX 要求)
+\end{minted}
+
+\vspace{1mm}
+完整启动序列（\warn{红色标注} = StarryOS 上曾中断的位置）:
+
+{\footnotesize
+\begin{tabular}{r l}
+ 1. & setresuid/setresgid → uid=70
+        \warn{← 空操作, 无效果} \\
+ 2. & socketpair(AF\_UNIX, SOCK\_STREAM) \\
+ 3. & bind(AF\_UNIX, ``/tmp/.s.PGSQL.5432'') \\
+ 4. & chmod(``/tmp/.s.PGSQL.5432'', 0777)
+        \warn{← EPERM (属主错误)} \\
+ 5. & shmget(IPC\_PRIVATE, size, IPC\_CREAT|0600)
+        \warn{← SMP 死锁} \\
+ 6. & shmat(shmid, NULL, 0) × N
+        \warn{← SMP 死锁} \\
+ 7. & epoll\_ctl(epfd, EPOLL\_CTL\_MOD, latch\_fd)
+        \warn{← 事件丢失} \\
+ 8. & epoll\_wait(epfd, events, maxevents, -1)
+        \warn{← LT 重复事件} \\
+ 9. & fork() → 子进程 \\
+10. & prctl(PR\_SET\_PDEATHSIG, SIGTERM)
+        \warn{← 被静默忽略} \\
+11. & prlimit64(RLIMIT\_NOFILE, ...)
+        \warn{← 返回成功但不生效} \\
+12. & getrlimit(RLIMIT\_STACK)
+        \warn{← 默认 512K (应为 8M)} \\
+13. & fsync(data\_dir\_fd)
+        \warn{← 返回 EISDIR} \\
+14. & rename(pg\_control\_tmp, pg\_control)
+        \warn{← 目标文件内容清零} \\
+15. & fchown(pg\_control, uid=70)
+        \warn{← 凭证缺失} \\
+16. & accept() → SIGUSR1 → SA\_RESTART → accept()
+        \warn{← 返回 EINTR 而非重启} \\
+17. & 并行查询 → interrupt waker
+        \warn{← 竞态, 永久挂起} \\
+\end{tabular}
+}
+\end{frame}
+
+% ── Slide 19: 凭证子系统 + SA_RESTART ─────────────────────────────────────
+
+\begin{frame}[fragile,shrink=30]{修复: 凭证子系统 (\#246) + SA\_RESTART (\#247)}
+\textbf{凭证子系统 (\#246)。} 整个适配中工程量最大的单项修改。
+
+\begin{columns}[T]
+\column{0.48\textwidth}
+\small
+\begin{minted}{rust}
+struct Cred {
+    uid, gid       // 真实身份
+    euid, egid     // 有效身份 (权限检查)
+    suid, sgid     // 保存的 set-user-ID
+    fsuid, fsgid   // 文件系统访问专用
+    sup_groups[]   // 补充组列表
+}
+\end{minted}
+\column{0.48\textwidth}
+\small
+\texttt{Arc<Cred>} 引用计数共享，fork 时继承。
+
+接入点:
+\begin{itemize}
+  \item \texttt{faccessat2}: fsuid 检查
+  \item \texttt{fchownat}: CAP\_CHOWN
+  \item \texttt{kill}: uid/euid/suid 匹配
+  \item IPC 所有权与权限检查
+  \item \texttt{/proc/<pid>/status} 字段
+\end{itemize}
+\end{columns}
+
+\vspace{1mm}
+\texttt{setresuid(-1, 1000, -1)} 的 NOCHG 语义: -1 表示该字段不修改。几乎所有 Linux daemon 依赖此细节。
+
+\vspace{1mm}
+\textbf{SA\_RESTART (\#247)。}
+
+RISC-V/AArch64 上 a0/x0 的寄存器复用问题:
+
+\begin{enumerate}
+  \item PC 回退 \texttt{SYSCALL\_INSN\_LEN} 字节（RISC-V/AArch64=4, x86\_64=2）
+  \item 恢复 a0 为原始参数（而非写入 \texttt{-EINTR}）
+  \item 不调用 \texttt{set\_retval(0)}（在 RISC-V/AArch64 上会覆盖刚恢复的 a0）
+\end{enumerate}
+\end{frame}
+
+% ── Slide 20: 并发正确性 ──────────────────────────────────────────────────
+
+\begin{frame}[fragile,shrink=40]{修复: 并发正确性问题 (\#226, \#504, \#316)}
+\textbf{IPC 共享内存死锁 (\#226)。} SMP=4 条件下 95\% 复现率:
+
+\begin{minted}{text}
+sys_shmget: SHM_MANAGER → shm_inner
+sys_shmat:  shm_inner → aspace → SHM_MANAGER
+                 ↑_______________↑
+                  锁顺序相反 → AB/BA 死锁
+\end{minted}
+
+修复: 统一全局锁顺序为 SHM\_MANAGER → shm\_inner → aspace。\texttt{sys\_shmdt}
+分阶段加锁。同步修复 use-after-free 和 \texttt{IPC\_RMID} 销毁时机。
+
+\vspace{1mm}
+\textbf{epoll LT 就绪队列 (\#504)。} 电平触发模式下单个就绪 fd 返回 N 份副本:
+
+\begin{minted}{rust}
+bug: pop_front → push_back 循环 → interest 被消费 maxevents 次
+fix: mem::take drain → 每 interest 仅访问一次 → LT 幸存者保留
+\end{minted}
+
+\vspace{1mm}
+\textbf{Interrupt waker 竞态 (\#316)。} swap(false) 与 register(waker) 之间存在窗口。
+
+修复: 将 register 移到 swap 之前。\highlight{register-then-check} 模式在本次项目中
+反复出现: SA\_RESTART、waitpid、interrupt waker、epoll check\_and\_register\_waker。
+\end{frame}
+
+% ── Slide 21: VFS rename + EPOLL_CTL_MOD ─────────────────────────────────
+
+\begin{frame}[fragile,shrink=15]{修复: VFS rename (\#312) + EPOLL\_CTL\_MOD (\#314)}
+\textbf{VFS rename 原子性 (\#312)。} tmpfs 上 \syscall{rename(src, dst)} 后目标文件内容全零:
+
+\begin{minted}{rust}
+DirNode::rename(src, dst):
+  bug: forget_entry(src) → DirEntry Arc→0 → page cache 释放
+       lookup(dst) → 新 DirEntry → 空 page cache
+  fix: remove_entry(src) 取出而非 forget
+       insert_entry(dst, same_DirEntry) → page cache 保持
+\end{minted}
+
+rename 的语义是重关联同一文件对象至新名称。对 tmpfs 此类纯内存文件系统，
+维持此语义的唯一途径是保持 DirEntry 实例不变。
+
+\vspace{1mm}
+\textbf{EPOLL\_CTL\_MOD 事件丢失 (\#314)。} PostgreSQL 的 WaitEventSet 对 latch fd
+反复执行 MOD 重武装后 \syscall{epoll_wait} 收不到事件:
+
+\begin{minted}{rust}
+Epoll::modify:
+  1. 替换 interests[fd] 中的 Arc<EpollInterest> (旧→新)
+  2. 旧 Arc 引用计数归零 → 释放
+  3. ready_queue 中悬挂的 Weak<旧 Arc> → upgrade() → None → 静默跳过
+  4. 新 Arc 无路径进入 ready_queue → epoll_wait 永远看不到此事件
+\end{minted}
+
+修复: 替换前记录旧 Arc 的 \code{is_in_queue()} 状态；若旧条目已在 ready\_queue 中，
+立即将新 Arc 的 Weak 推入 ready\_queue。
+\end{frame}
+
+% ── Slide 22: PostgreSQL 总结 ─────────────────────────────────────────────
+
+\begin{frame}[shrink=20]{PostgreSQL 适配总结}
+13 个 PR，按问题层次分类:
+
+\vspace{1mm}
+\begin{tabularx}{\textwidth}{p{2cm} c p{2.5cm} X}
+\toprule
+\textbf{层次} & \textbf{PR 数} & \textbf{代表} & \textbf{特征} \\
+\midrule
+缺失功能 & 1 & \#246 凭证 & 整套子系统从头构建 \\
+\midrule
+\multirow{2}{*}{语义偏差} & \multirow{2}{*}{9} &
+  \#251 fsync 目录 & 基本路径正确，标志位/errno/边界 \\
+  & & \#312 rename, \#314 MOD & 与 Linux 不一致 \\
+\midrule
+并发正确性 & 3 & \#226 SHM 死锁 & 单核正确，SMP 暴露 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1mm}
+13 个 PR 所修复的均为通用内核缺陷。凭证子系统影响所有使用 \syscall{setresuid} 的应用；
+epoll LT 修复影响 libuv、Go netpoll、nginx；VFS rename 修复影响 SQLite 及各类包管理器。
+\end{frame}
+
+% ════════════════════════════════════════════════════════════════════════════
+% §4B  实验4: Wayland/Weston 适配
+% ════════════════════════════════════════════════════════════════════════════
+
+\section{实验4B: Wayland/Weston 适配}
+
+\begin{frame}[shrink=25]{为什么选择 Weston}
+PostgreSQL 测试的是 POSIX 模型（进程、凭证、IPC、文件系统）。
+Weston 测试的是 Linux 驱动模型和用户态图形生态。
+两者覆盖了 StarryOS 内核接口的互补侧面。
+
+\vspace{1mm}
+\resizebox{\textwidth}{!}{%
+\begin{tabularx}{\textwidth}{p{2cm} p{4.2cm} X}
+\toprule
+\textbf{维度} & \textbf{PostgreSQL} & \textbf{Weston} \\
+\midrule
+核心依赖 & 进程模型、凭证、VFS、IPC、epoll &
+  驱动节点、DRM/KMS、evdev、netlink、AF\_UNIX SCM\_RIGHTS \\
+\midrule
+测试层 & syscall 语义层 & 驱动 ioctl + sysfs + udev 契约层 \\
+\midrule
+失败模式 & 明确错误码 + 日志 & 多层级初始化失败，根因深埋 5+ 层调用栈 \\
+\midrule
+发现方式 & 启动日志直接指出失败的系统调用 &
+  阅读 libudev/libinput/libdrm 源码追踪判断条件 \\
+\bottomrule
+\end{tabularx}%
+}
+
+\vspace{1mm}
+Weston 的启动路径穿透了整个 Linux 用户态图形栈:
+
+drm-backend (libdrm → /dev/dri/card0 → DRM/KMS) →
+libinput (libudev → /sys, /dev/input/eventN → evdev) →
+wayland-server (AF\_UNIX → SCM\_RIGHTS fd 传递) →
+event loop (epoll + timerfd)
+\end{frame}
+
+% ── Slide 24: DRM/KMS 资源枚举 ────────────────────────────────────────────
+
+\begin{frame}[fragile,shrink=20]{子系统 1: DRM/KMS 图形栈: 资源枚举}
+\small
+\textbf{设备打开与能力协商:}
+
+\begin{minted}{c}
+drmOpen("/dev/dri/card0") → fd
+drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES)
+drmSetClientCap(fd, DRM_CLIENT_CAP_ATOMIC)
+\end{minted}
+
+libdrm 盲探约十种 capability。内核必须对未知 cap 返回 0。
+
+\vspace{1mm}
+\textbf{KMS 资源枚举:}
+
+\begin{minted}{c}
+drmModeGetResources(fd)
+  → CRTCs 列表        ← 显示控制器
+  → Connectors 列表    ← 物理输出端口
+  → Encoders 列表      ← 信号编码器
+  → framebuffers 列表  ← 已注册的 framebuffer
+
+drmModeGetConnector(fd, conn_id) → 显示模式列表
+drmModeGetPlane(fd, plane_id) → 像素格式 + 类型
+\end{minted}
+
+\vspace{1mm}
+\textbf{属性系统:} \texttt{CRTC.ACTIVE} 类型必须是 \texttt{RANGE [0, 1]}。
+如果是 ENUM 或 SIGNED\_RANGE，weston 的 atomic backend 直接拒绝。
+\end{frame}
+
+% ── Slide 25: DRM/KMS 模式设置 ────────────────────────────────────────────
+
+\begin{frame}[fragile,shrink=20]{子系统 1: DRM/KMS 图形栈: 模式设置}
+\small
+\textbf{Framebuffer 分配与原子提交:}
+
+\begin{minted}{c}
+drmModeCreateDumb(fd, w, h, bpp) → {handle, size, pitch}
+drmModeAddFB2(fd, w, h, format, handles[], ...) → fb_id
+
+drmModeCreatePropertyBlob(fd, &mode, sizeof(mode)) → blob_id
+drmModeAtomicAlloc() → atomic_request
+
+// 原子提交: CRTC + Plane + Connector 一次性生效
+drmModeAtomicAddProperty(req, CRTC_ID, "ACTIVE", 1)
+drmModeAtomicAddProperty(req, CRTC_ID, "MODE_ID", blob_id)
+drmModeAtomicAddProperty(req, PLANE_ID, "FB_ID", fb_id)
+drmModeAtomicAddProperty(req, PLANE_ID, "CRTC_ID", crtc_id)
+drmModeAtomicCommit(req,
+  DRM_MODE_ATOMIC_ALLOW_MODESET | DRM_MODE_PAGE_FLIP_EVENT)
+\end{minted}
+
+\textbf{MODE\_ID blob 回环:} 用户态序列化 → 内核原样保存 → 用户态读回完全一致的字节序列。
+
+\textbf{PAGE\_FLIP 事件:} commit → 硬件翻页 → 内核写入 \texttt{drm\_event\_vblank} → epoll 唤醒 → 提交下一帧。
+
+Mode list 使用 CVT-RBv1 真实时序参数合成。随便填的数字会被 weston mode validator 拒绝。
+\end{frame}
+
+% ── Slide 26: evdev + libinput ────────────────────────────────────────────
+
+\begin{frame}[fragile,shrink=30]{子系统 2: evdev 输入 + libinput}
+libinput 是 Weston 的输入后端，通过 libudev 发现设备、通过 evdev ioctl 查询能力。
+
+\vspace{1mm}
+\textbf{设备发现:}
+\begin{minted}{c}
+udev_enumerate_add_match_subsystem("input")
+udev_enumerate_scan_devices()
+  → 遍历 /sys/class/input/
+    → realpath() 解析软链 → dirname() 定位 → 读 uevent
+  → 遍历 /sys/dev/char/<major>:<minor>
+  → 检查 /run/udev/data/c<major>:<minor> → 判定是否已初始化
+\end{minted}
+
+\vspace{1mm}
+\textbf{设备能力查询:}
+\begin{minted}{c}
+ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(keys)), &bits)   → 按键能力位图
+ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(abs)), &bits)    → 绝对轴能力
+ioctl(fd, EVIOCGPROP(0), &prop_bits)                → 设备属性位
+ioctl(fd, EVIOCGABS(ABS_X), &abs_info)              → {min, max, fuzz, flat}
+\end{minted}
+
+\textbf{libinput 分类决策树:}
+\texttt{INPUT\_PROP\_POINTER + BUTTONPAD} → 触控板；
+\texttt{INPUT\_PROP\_DIRECT + ABS\_X/Y} → 触屏；
+无属性 + 按键 → 键盘。
+
+缺失任何一个 ioctl 返回值，设备无法被正确分类，libinput 将其事件当作噪声丢弃。
+\end{frame}
+
+% ── Slide 27: Wayland 协议与 FD 传递 ──────────────────────────────────────
+
+\begin{frame}[fragile,shrink=40]{子系统 3: Wayland 协议与 FD 传递}
+\textbf{Wayland 协议的 IPC 机制:}
+
+\begin{minted}{c}
+// 客户端
+memfd_create("wayland-shm", MFD_ALLOW_SEALING) → shm_fd
+ftruncate(shm_fd, w * h * 4)
+mmap(NULL, size, PROT_WRITE, MAP_SHARED, shm_fd, 0) → 像素 buffer
+write(pixels)
+sendmsg(sock, {SCM_RIGHTS, [shm_fd]})  // 传递 fd 给合成器
+
+// 合成器 (Weston)
+recvmsg(sock, MSG_DONTWAIT, {SCM_RIGHTS}) → 收到 shm_fd
+mmap(NULL, size, PROT_READ, MAP_SHARED, shm_fd, 0) → 读取像素
+\end{minted}
+
+\vspace{1mm}
+\textbf{SCM\_RIGHTS 在 SOCK\_STREAM 上的 byte-mark 语义:}
+
+一次 \syscall{sendmsg} 中，cmsg 携带的 fd 与同一调用写出的第一个字节原子交付。
+接收端 \syscall{recvmsg} 在读到此 fd 对应的字节范围的首字节时同时获得 fd。
+
+Linux 实现: 将 \texttt{[start\_byte, end\_byte]} 与 \texttt{scm\_fp\_list} 绑定；
+\texttt{recvmsg} 截断读取在下一条 cmsg 的 \texttt{end\_byte} 处。
+
+消息边界不匹配 → fd 与合成器期望的 fd 错位 → Wayland 协议判定违规并断开连接。
+\end{frame}
+
+% ── Slide 28: memfd 与 F_SEAL_* ───────────────────────────────────────────
+
+\begin{frame}[fragile,shrink=25]{子系统 4: memfd 与 F\_SEAL\_*}
+memfd 是 Wayland 共享内存机制的内核基础:
+
+\begin{minted}{c}
+memfd_create("wayland-shm", MFD_ALLOW_SEALING) → fd
+ftruncate(fd, size)
+fcntl(fd, F_ADD_SEALS, F_SEAL_SHRINK)   // 禁止缩小
+fcntl(fd, F_ADD_SEALS, F_SEAL_GROW)     // 禁止扩大
+fcntl(fd, F_ADD_SEALS, F_SEAL_WRITE)    // 禁止写入
+fcntl(fd, F_ADD_SEALS, F_SEAL_SEAL)     // 不可逆锁定
+\end{minted}
+
+\vspace{1mm}
+Seal 语义渗透到三个独立内核入口:
+
+\begin{tabularx}{\textwidth}{p{2.5cm} p{4cm} X}
+\toprule
+\textbf{Seal} & \textbf{影响的系统调用} & \textbf{行为} \\
+\midrule
+\texttt{F\_SEAL\_SHRINK} & \texttt{ftruncate} new\_size < old\_size & 拒绝，返回 \texttt{EPERM} \\
+\texttt{F\_SEAL\_GROW} &
+  \texttt{ftruncate} new\_size > old\_size; \texttt{write} 跨 EOF &
+  拒绝扩大；write 被拒且文件大小回退 \\
+\texttt{F\_SEAL\_WRITE} &
+  \texttt{write}; \texttt{mmap(PROT\_WRITE, MAP\_SHARED)} &
+  拒绝写入；mmap 返回 \texttt{EPERM} \\
+\texttt{F\_SEAL\_SEAL} & \texttt{fcntl(F\_ADD\_SEALS)} & 拒绝所有后续 seal 修改 \\
+\bottomrule
+\end{tabularx}
+
+并发安全: \code{add_seals} 使用 \code{compare_exchange} 循环原子合并；
+\code{set_len_sealed} 在持锁状态下完成"读取→校验→修改"三步。
+\end{frame}
+
+% ── Slide 29: 隐性契约 ────────────────────────────────────────────────────
+
+\begin{frame}[shrink=20]{隐性契约: sysfs、udev 与设备发现}
+Weston 适配中\highlight{最困难的部分}。三个 bug 都不是 syscall 层面的问题:
+
+\vspace{1mm}
+\begin{enumerate}
+  \item \textbf{sysfs class 目录必须是软链:}
+
+  \texttt{/sys/class/drm/card0} → 必须软链到 \texttt{/sys/devices/virtual/drm/card0}
+
+  libudev: \texttt{realpath() → dirname() → 读 uevent}
+
+  普通目录: \texttt{dirname("/sys/class/drm/card0") = "/sys/class/drm"}（无 uevent）
+
+  \item \textbf{evdev minor 号必须从 64 起:}
+
+  Linux: \texttt{EVDEV\_MINOR\_BASE = 64} → \texttt{/dev/input/event0 → minor=64}
+
+  StarryOS 原: sysfs 写 ``13:64'' 但设备节点实际为 ``13:1''（minor = i+1）
+
+  libinput: \texttt{fstat() → st\_rdev = makedev(13, 1) → 找不到匹配 → 报错}
+
+  \item \textbf{/run/udev/data/ 预填空文件:}
+
+  \texttt{libudev: access("/run/udev/data/c13:64", F\_OK) == 0 → "initialized"}
+
+  StarryOS: 无 udevd → 文件不存在 → libinput 判定设备未初始化 → 跳过
+\end{enumerate}
+
+这三种契约散布在 udev 规则和用户态库源码中，没有任何集中文档记载。
+\end{frame}
+
+% ── Slide 30: DRM 设备节点修复 ────────────────────────────────────────────
+
+\begin{frame}[shrink=15]{修复: DRM/KMS 设备节点 (\#506)}
+Weston 首个阻塞点: \texttt{drmOpen("/dev/dri/card0")} → \texttt{ENOENT}。
+
+\vspace{1mm}
+从零创建 DRM 设备节点，实现 legacy 与 atomic 两条 KMS 路径:
+
+\vspace{1mm}
+\begin{tabularx}{\textwidth}{p{2.5cm} p{3.5cm} X}
+\toprule
+\textbf{路径} & \textbf{ioctl} & \textbf{用途} \\
+\midrule
+\multirow{3}{*}{Legacy} & \texttt{SETCRTC} & 基本模式设置 \\
+  & \texttt{PAGE\_FLIP} & 翻页通知 \\
+  & \texttt{WAIT\_VBLANK} & 等待垂直消隐 \\
+\midrule
+\multirow{2}{*}{Atomic} & \texttt{ATOMIC\_COMMIT} & 原子提交 CRTC+Plane+Connector \\
+  & \texttt{ATOMIC\_TEST\_ONLY} & 测试模式 \\
+\midrule
+\multirow{2}{*}{通用} & \texttt{GETRESOURCES}, \texttt{GETCONNECTOR}, \texttt{GETPLANE} & 资源枚举 \\
+  & \texttt{GETPROPERTY}, \texttt{GETPROPBLOB}, \texttt{CREATEPROPBLOB} & 属性系统 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1mm}
+关键细节: 未知 capability 返回 0（libdrm 探针）；\texttt{CRTC.ACTIVE} 类型为
+\texttt{RANGE [0, 1]}（weston 硬编码检查）；MODE\_ID blob 字节级回环。
+
+测试: 83 项断言覆盖 version / modeset / atomic 三条路径，4 架构 PASS。
+\end{frame}
+
+% ── Slide 31: evdev 修复 ──────────────────────────────────────────────────
+
+\begin{frame}[shrink=45]{修复: evdev 多设备与输入 ioctl (\#513)}
+\textbf{设备分类误判。}
+
+QEMU virtio-keyboard 因 \texttt{BTN\_MISC} 在同一字节报位，键盘误判为鼠标。
+后注册设备覆盖先注册的，event0 消失。
+
+修复: 每个设备均暴露为 \texttt{/dev/input/eventN}，首个鼠标 alias 到 mice。
+
+\vspace{1mm}
+\textbf{EVIOCGPROP 未实现。}
+
+libinput 通过此 ioctl 获知设备属性位（\texttt{INPUT\_PROP\_POINTER}、
+\texttt{INPUT\_PROP\_DIRECT}、\texttt{INPUT\_PROP\_BUTTONPAD}）。
+未实现时所有位为 0，libinput 判定"无 pointer 属性"→ 将触屏事件当作噪声丢弃。
+
+\vspace{1mm}
+\textbf{EVIOCGABS 未实现。}
+
+libinput 查询 \texttt{ABS\_X.min/max}、\texttt{ABS\_Y.min/max} 获取坐标范围。
+全零时触屏区域为 0×0，所有事件在边界外。
+
+\vspace{1mm}
+修复: \texttt{axdriver\_input} trait 新增 \texttt{get\_prop\_bits()} 和
+\texttt{get\_abs\_info()} 默认方法；virtio-input 驱动实现透传。
+\end{frame}
+
+% ── Slide 32: Weston bringup 综合修复 ────────────────────────────────────
+
+\begin{frame}[fragile,shrink=10]{修复: Weston bringup 综合修复包 (\#509)}
+Wayland 路径上最复杂的单项修改，含 7 项互相依赖的修复:
+
+\vspace{1mm}
+\small
+\begin{tabularx}{\textwidth}{c p{3cm} X}
+\toprule
+\textbf{编号} & \textbf{修复} & \textbf{问题} \\
+\midrule
+N1 & mmap PROT\_WRITE 自动补 PROT\_READ & RISC-V 特权规范 R=0 W=1 为 reserved PTE \\
+N2 & EventDev::register 不再无条件 wake & LT 下死循环 ~500Hz \\
+N3 & /dev/input 设备分类修正 & BTN\_MISC 导致键盘误判为鼠标 \\
+P1 & virtio-input IRQ 唤醒 & 仅靠 16ms tick 兜底，输入延迟 16ms \\
+P2 & register\_irq\_waker 重构 & IRQ 上下文 SpinNoIrq 可能死锁 \\
+P3 & EventDev 多事件缓冲 (\texttt{VecDeque}, 256) & 单槽位 read\_ahead，burst 丢事件 \\
+P4 & AF\_UNIX SCM\_RIGHTS + MSG\_DONTWAIT & cmsg 被忽略，fd 凭空消失 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1mm}
+\textbf{P4 实现:}
+
+\begin{minted}{rust}
+PendingCmsg { start_byte, end_byte, cmsg } 队列
+send: [start_byte, end_byte] 与 cmsg 绑定入队
+recv: 读取截断在下一条 cmsg 的 end_byte 处
+      cmsg 与对应字节范围的首字节原子交付
+\end{minted}
+
+\highlight{register-then-check} 模式在 IRQ waker 中再次应用:
+先 \code{register(waker)}，再 \code{swap(false)} 检查。
+\end{frame}
+
+% ── Slide 33: aarch64 架构支持 ────────────────────────────────────────────
+
+\begin{frame}[shrink=20]{修复: aarch64 架构支持 (\#510, \#511)}
+\textbf{\#510: EL0 cache 指令使能。} aarch64 上 Weston 在 \texttt{\_\_libc\_start\_main}
+之前收到 \texttt{SIGTRAP}。
+
+\vspace{1mm}
+根因: \texttt{SCTLR\_EL1} 寄存器三位未置位:
+
+\begin{tabularx}{\textwidth}{c c l X}
+\toprule
+\textbf{位} & \textbf{名称} & \textbf{控制} \\
+\midrule
+bit 15 & \texttt{UCT} & EL0 访问 \texttt{CTR\_EL0}（cache type register） \\
+bit 14 & \texttt{DZE} & EL0 执行 \texttt{DC ZVA}（data cache zero by address） \\
+bit 26 & \texttt{UCI} & EL0 执行 \texttt{DC CVAU} 和 \texttt{IC IVAU}（cache maintenance） \\
+\bottomrule
+\end{tabularx}
+
+musl/glibc 启动早期需读 \texttt{CTR\_EL0} 获取 cache line size；
+Mesa 的 SIMD 路径需 \texttt{DC ZVA} 零拷贝。
+
+\vspace{1mm}
+\textbf{\#511: GICv3 + CNTV for Apple HVF。}
+
+Apple Hypervisor Framework 下 GICv2 路径访问 GICC MMIO 时 HVF 无法提供
+\texttt{ESR.ISV} → QEMU \texttt{assert(isv)} 失败。CNTP 被 EL2 占用。
+
+可用路径: GICv3 system-register CPU interface + CNTV virtual timer。
+修复增加 \texttt{gic-v3} 和 \texttt{cntv-timer} 两个 feature flag。
+默认 QEMU TCG 与物理板保持 GICv2 + CNTP 路径不变。
+\end{frame}
+
+% ── Slide 34: Weston 总结 ─────────────────────────────────────────────────
+
+\begin{frame}[shrink=15]{Weston 适配总结}
+8 个 PR，按子系统分层推进:
+
+\vspace{1mm}
+\resizebox{\textwidth}{!}{%
+\begin{tabularx}{\textwidth}{p{2.2cm} c X}
+\toprule
+\textbf{子系统层} & \textbf{PR} & \textbf{修复内容} \\
+\midrule
+架构基础 & \#510, \#511 & aarch64 EL0 cache 指令、GICv3+CNTV \\
+设备节点 & \#506 & /dev/dri/card0: DRM/KMS legacy+atomic 双路径 \\
+sysfs/udev & \#508 & class 软链、evdev minor=64、/run/udev/data/ 预填空 \\
+输入 & \#513 & 每设备 eventN、EVIOCGPROP/EVIOCGABS \\
+图形协议 & \#507 & memfd F\_SEAL\_SHRINK/GROW/WRITE/SEAL + 并发安全 \\
+网络 & \#512 & NETLINK\_ROUTE/GENERIC/KOBJECT\_UEVENT + rtnetlink 应答 \\
+综合修复 & \#509 & PROT\_WRITE、IRQ waker、SCM\_RIGHTS byte-mark、MSG\_DONTWAIT \\
+\bottomrule
+\end{tabularx}%
+}
+
+\vspace{1mm}
+\normalsize
+内核图形栈的兼容性不是 checklist 式的功能对照。它是对 Linux 用户态生态中
+\highlight{隐性契约的逐层发现}。修复本身加起来不过数百行，但定位问题需要穿透五层抽象
+（Weston → libinput/libdrm → libudev → sysfs/evdev → 内核），每层都可能隐藏一个微小的格式偏差。
+\end{frame}
+
+% ════════════════════════════════════════════════════════════════════════════
+% §5  StarryOS 架构分析
+% ════════════════════════════════════════════════════════════════════════════
+
+\section{StarryOS 架构分析}
+
+\begin{frame}[fragile,shrink=25]{架构概览}
+StarryOS 在 ArceOS unikernel 的模块体系之上叠加一层 Linux syscall ABI 兼容层:
+
+\vspace{1mm}
+\begin{center}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  layer/.style={draw=metroteal, fill=metroteal!5, rounded corners=3pt,
+                thick, text width=11cm, align=center, minimum height=7mm,
+                font=\small, inner sep=4pt},
+]
+  \node[layer, fill=accent!10, draw=accent] (app) {应用层 \hspace{3cm} Alpine Linux 用户空间程序};
+  \node[layer, below=2mm of app] (syscall) {系统调用层 \hspace{2cm} starry-kernel (\~{}210 syscalls), 640 行巨型 match 分发器};
+  \node[layer, below=2mm of syscall] (comp) {组件层 \hspace{2cm} starry-process / starry-signal / starry-vm / starry-smoltcp};
+  \node[layer, below=2mm of comp] (arceos) {ArceOS 模块层 \hspace{1cm} axhal / axtask / axmm / axfs / axnet / axdriver / axalloc};
+  \node[layer, below=2mm of arceos] (plat) {平台抽象层 \hspace{1cm} ax-plat (8 个板级实现), riscv64/aarch64/x86/loong};
+
+  \draw[arr] (app) -- (syscall);
+  \draw[arr] (syscall) -- (comp);
+  \draw[arr] (comp) -- (arceos);
+  \draw[arr] (arceos) -- (plat);
+\end{tikzpicture}%
+}
+\end{center}
+
+\vspace{1mm}
+核心设计: 复用 ArceOS 的硬件抽象、驱动框架、调度器、页表、文件系统，
+通过约 640 行的巨型 match 分发器实现约 210 个 Linux syscall 语义。
+StarryOS 代码量约 60\% 在 \texttt{syscall/} 及其子模块中。
+\end{frame}
+
+% ── Slide 36: 有利于 AI 开发的架构特征 ────────────────────────────────────
+
+\begin{frame}[shrink=15]{有利于 AI 开发的架构特征}
+\begin{enumerate}
+  \item \textbf{分层模块化。} 修改 \texttt{starry-signal} 无须理解 ArceOS 的 virtio 驱动。
+    \texttt{starry-process} 作为纯数据模型，不依赖调度器与 MMU。
+    AI 代理可仅阅读相关层源码，不必加载整个内核上下文。
+
+  \item \textbf{类型系统的编译时验证。} 四种内存映射后端通过 \texttt{enum\_dispatch} 统一为
+    \texttt{Backend} 枚举，编译器强制穷举所有变体。新增变体时编译器自动标记所有未处理分支。
+
+  \item \textbf{确定性的信号投递。} 信号在 syscall/异常/缺页返回后同步检查，非异步抢占。
+    信号投递时机完全由 syscall 状态驱动，可复现、可测试。
+
+  \item \textbf{资源作用域的可追踪性。} \texttt{scope\_local} 机制将 FD 表和 FS 上下文绑定到
+    进程作用域。每个 fd 必然属于某个活跃作用域，不存在悬空引用。
+
+  \item \textbf{Linux 行为预言机。} starry-harness 在 Docker Linux 上运行与 StarryOS 相同的
+    测试输入，逐字段对比。测试框架本身编码了正确性标准。
+\end{enumerate}
+\end{frame}
+
+% ── Slide 37: 产生摩擦的架构特征 ──────────────────────────────────────────
+
+\begin{frame}[shrink=10]{产生系统性摩擦的架构特征}
+\begin{enumerate}
+  \item \textbf{巨型 match 分发器。} 约 210 个 syscall 集中在一个函数中，syscall 之间
+    没有模块边界。验证一个 syscall 修复需"构建内核 → 制作 rootfs → 启动 QEMU → 运行测试"，
+    单次迭代 3--5 分钟。
+
+  \item \textbf{能力发现机制缺失。} 8 个 syscall 返回空操作的匿名 fd（\texttt{userfaultfd}、
+    \texttt{io\_uring\_setup}、\texttt{memfd\_secret} 等），调用成功但无实际功能。
+    对比: \texttt{fanotify\_init} 返回 \texttt{-ENOSYS} 反而提供了明确信号。
+
+  \item \textbf{层间隐式耦合。} \texttt{TaskExt::on\_enter/on\_leave} 通过 \texttt{scope\_local}
+    隐式副作用传递进程状态，无显式返回值。
+
+  \item \textbf{特性标志透明性缺失。} 三层特性级联，特性冲突不在编译时报错。
+    \texttt{plat-dyn} 在 x86\_64/loongarch64 上被静默禁用以回退到静态平台模式。
+
+  \item \textbf{凭证模型的语义偏差。} credentials 存储在 \texttt{Thread.cred}（per-thread），
+    Linux 为 per-process。\texttt{set\_cred()} 遍历所有线程同步凭证时存在时间窗口。
+\end{enumerate}
+\end{frame}
+
+% ── Slide 38: 执行 vs 决策 ────────────────────────────────────────────────
+
+\begin{frame}[shrink=20]{执行 vs 决策: 六周数据}
+32 个 PR 的完成过程提供了关于 AI 辅助开发定位的具体数据:
+
+\vspace{1mm}
+\resizebox{\textwidth}{!}{%
+\begin{tabularx}{\textwidth}{p{3.2cm} c c X}
+\toprule
+\textbf{维度} & \textbf{AI} & \textbf{人工} & \textbf{说明} \\
+\midrule
+编写代码 & \~{}70\% & \~{}30\% & 模板代码、测试生成、配置修改 \\
+生成测试 & \~{}80\% & \~{}20\% & C 测试程序自动化 \\
+运行 clippy/fmt & \~{}95\% & \~{}5\% & 完全自动化 \\
+\midrule
+判断根因 & \~{}10\% & \~{}90\% & 需理解子系统交互与语义 \\
+确定修复方向 & \~{}10\% & \~{}90\% & 在多个方案中选择 \\
+选择锁策略 & \~{}5\% & \~{}95\% & 传递性死锁检查不可靠 \\
+评估传递性影响 & \~{}5\% & \~{}95\% & 修改对全局状态的影响 \\
+架构决策 & 0\% & 100\% & 如凭证存储 per-thread vs per-process \\
+\bottomrule
+\end{tabularx}%
+}
+
+\vspace{1mm}
+AI 承担了约 70\% 的执行工作量，但约 90\% 的决策工作量依赖人工判断。
+AI 的核心价值在于消除"已知问题所在但修改成本过高"的摩擦，而非替代"问题尚不明确需要探索"的认知过程。
+\end{frame}
+
+% ── Slide 39: 重新设计 ────────────────────────────────────────────────────
+
+\begin{frame}[shrink=15]{重新设计: 六个方向}
+若重新设计一个面向 AI 辅助开发友好的内核，核心思路是使架构内建更多"变更可被验证"的机制:
+
+\vspace{1mm}
+\resizebox{\textwidth}{!}{%
+\begin{tabularx}{\textwidth}{p{2.5cm} p{4.5cm} X}
+\toprule
+\textbf{改进} & \textbf{当前} & \textbf{目标} \\
+\midrule
+可插拔 syscall 注册表 &
+  640 行 match，无模块边界 &
+  每个 syscall 声明编号+签名+返回类型，独立编译、测试、fuzz \\
+\midrule
+显式能力矩阵 &
+  8 个 syscall 返回静默成功的 dummy fd &
+  \texttt{/proc/sys/kernel/capabilities} 暴露实现状态 \\
+\midrule
+层级间形式化契约 &
+  TaskExt 依赖隐式副作用 &
+  \texttt{on\_enter() → ActiveScope}、\texttt{on\_leave(scope)} 显式返回值 \\
+\midrule
+规约驱动开发 &
+  无机器可读 syscall 语义规约 &
+  YAML/TOML 规约驱动测试生成和 fuzz \\
+\midrule
+自动化差异测试 &
+  Linux 对照需手动操作 &
+  每个 PR 自动 Docker Linux 上运行相同输入 \\
+\midrule
+验证基础设施统一 &
+  上游 CI 与 monorepo CI 测试集不重叠 &
+  一次 CI 运行覆盖所有相关测试 \\
+\bottomrule
+\end{tabularx}%
+}
+
+\vspace{1mm}
+\normalsize
+方向是在现有层次之间插入显式的契约和验证点，而非推倒重来。
+\end{frame}
+
+% ════════════════════════════════════════════════════════════════════════════
+% §6  反思 + OS 课程建议
+% ════════════════════════════════════════════════════════════════════════════
+
+\section{反思 + OS 课程建议}
+
+\begin{frame}[shrink=10]{对兼容性的重新理解}
+六周的工作改变了对"操作系统兼容性"的理解。
+
+此前认为兼容性即实现 syscall 表: 对照 Linux 的 syscall 编号列表逐一实现，跑通即完成。
+
+\vspace{1mm}
+实际情况:
+
+\vspace{1mm}
+兼容性的真正难点不在系统调用的\highlight{存在性}，而在每个系统调用的\highlight{精确语义}、
+每个错误条件的\highlight{errno 返回值}、每个\highlight{边界情况的处理方式}。
+
+\vspace{1mm}
+\begin{itemize}
+  \item \texttt{setresuid(-1, 1000, -1)} 的 NOCHG 语义
+  \item \texttt{prlimit64} 返回 \texttt{Ok(0)} 但静默不生效
+  \item \texttt{fsync} 作用于目录 fd 返回 \texttt{EISDIR} 还是 \texttt{Ok(0)}
+  \item \texttt{epoll\_pwait} sigsetsize=16 返回 \texttt{EINVAL} 还是接受
+\end{itemize}
+
+\vspace{1mm}
+用户态生态中的隐性契约同样关键: \texttt{/sys/class/drm/card0} 必须是软链，
+evdev minor 号必须从 64 起，\texttt{/run/udev/data/} 必须预填空文件。
+这些都不对应任何一个缺失的系统调用，但任何一个偏差都导致应用静默失败。
+
+\vspace{1mm}
+\highlight{Linux 兼容性本质上是"成千上万个微小 ABI 的正确实现"，而非"约 400 个系统调用的存在性检查"。}
+\end{frame}
+
+% ── Slide 41: 从这次实验看 OS 教学 ────────────────────────────────────────
+
+\begin{frame}[shrink=15]{从这次实验看 OS 教学}
+不写通用建议。只写这次实验让我意识到的、在课本和讲义里学不到的三件事。
+
+\vspace{1mm}
+\textbf{① 修内核与写内核是两种不同的技能。}
+
+写内核是自上而下: 你决定设计，你定义接口，你控制复杂度。
+修内核是自下而上: 设计已经定了（Linux），接口已经定了（210 个 syscall + 数百个 ioctl），
+复杂度已经在了（15 年用户态生态的累积）。你没有控制的奢侈，你只能理解。
+
+课程前三年教的全是"怎么写"。这次六周全在"怎么修"。修的技能与写的技能有本质区别。
+修需要读 man page 找边界条件、写最小复现用例、对照 Linux 确认预期行为、最小改动修复。
+这组方法在现有课程中未被作为独立技能教授。
+
+\vspace{1mm}
+\textbf{② 最难的 bug 源于用户态代码的假设从未被记录，而非内核代码本身写错。}
+
+\texttt{/sys/class/drm/card0} 必须是软链。evdev minor 号必须从 64 起。
+\texttt{/run/udev/data/} 下必须有空文件。这三项分别花了数小时在"找"上，不在"修"上。
+
+\vspace{1mm}
+\textbf{③ 真实应用是更好的测试框架。}
+
+PostgreSQL 在 initdb 过程中测试了 fsync 对目录 fd 的行为、setresuid 的 NOCHG 语义、
+rename 后 page cache 保持、epoll CTL\_MOD 事件保持。没有任何单元测试覆盖这些组合。
+
+真实应用不知道你的内核实现细节，它只会用它认为理所当然的方式调用系统调用。
+这种"无知"使它成为最诚实的测试者。
+\end{frame}
+
+% ════════════════════════════════════════════════════════════════════════════
+% §7  最终产出 + 致谢
+% ════════════════════════════════════════════════════════════════════════════
+
+\section{最终产出}
+
+\begin{frame}[fragile]{最终产出汇总}
+\small
+\begin{columns}[T]
+\column{0.30\textwidth}
+\textbf{实验1: AI 流水线}
+\begin{itemize}
+  \item starry-harness 插件
+  \item 9 技能 + 3 代理 + 16 脚本
+  \item 支撑全部 32 个 PR
+\end{itemize}
+
+\column{0.30\textwidth}
+\textbf{实验2: syscall 修复}
+\begin{itemize}
+  \item 11 个独立 PR
+  \item timerfd (fd 完整实现)
+  \item preadv/pwritev (ABI)
+  \item mremap (内存管理)
+\end{itemize}
+
+\column{0.35\textwidth}
+\textbf{实验4A: PostgreSQL}
+\begin{itemize}
+  \item 13 个 PG 发现 PR
+  \item 凭证子系统、SA\_RESTART
+  \item IPC 死锁、VFS rename
+  \item postmaster + initdb + 基本查询
+\end{itemize}
+\end{columns}
+
+\vspace{1mm}
+\begin{columns}[T]
+\column{0.30\textwidth}
+\textbf{实验4B: Wayland/Weston}
+\begin{itemize}
+  \item 8 个 Wayland 专属 PR
+  \item DRM/KMS 双路径
+  \item sysfs 软链 + SCM\_RIGHTS
+  \item Weston 14 帧渲染
+\end{itemize}
+
+\column{0.30\textwidth}
+\textbf{架构分析}
+\begin{itemize}
+  \item 5 个有利于 AI 的特征
+  \item 5 个产生摩擦的特征
+  \item 6 个重新设计方向
+\end{itemize}
+
+\column{0.35\textwidth}
+\vspace{1mm}
+\begin{center}
+\begin{tikzpicture}
+  \node[boxhl, font=\large\bfseries, inner sep=10pt] {
+    32 个已合入 PR\\
+    30+ 回归测试用例\\
+    4 架构覆盖
+  };
+\end{tikzpicture}
+\end{center}
+\end{columns}
+\end{frame}
+
+% ── Slide 43: 致谢 ────────────────────────────────────────────────────────
+
+\begin{frame}[standout]
+\vspace{1cm}
+
+{\LARGE 致谢}
+
+\vspace{1cm}
+
+{\large 感谢评审老师的宝贵时间}
+
+\vspace{1cm}
+
+{\normalsize 欢迎提问与讨论}
+
+\vspace{0.5cm}
+
+{\footnotesize\dimtext{Joseph Joshua (jsph273) · rcore-os/tgoskits · 2026-05-30}}
+
+\end{frame}
+
+\end{document}
